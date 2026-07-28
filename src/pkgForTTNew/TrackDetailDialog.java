@@ -11,6 +11,7 @@ import pkgForTTNew.Track.Style;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -30,9 +31,12 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
     JLabel tTime = new JLabel();
     JComboBox<Style> cbStyle = new JComboBox<Style>(Track.Style.values());
     JTextField tAlbum = new JTextField();
+    JCheckBox normalizeCheckBox = new JCheckBox("Normalize to LUFS:");
+    JTextField targetLufsField = new JTextField(String.valueOf(AddFolderDialog.DEFAULT_TARGET_LUFS));
     private boolean bFieldChanged = false;
     private boolean bCreate = false;
     Track mTrack;
+    File mSourceFile;
 
     // Update an existing track
     public TrackDetailDialog(Track track)
@@ -49,6 +53,7 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
     {
         super((JDialog) null, true);
         bCreate = true;
+        mSourceFile = file;
         JPanel mainPanel = setup();
         String fileNameAndPath = "";
         try
@@ -103,7 +108,7 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
     private JPanel setup()
     {
         setBounds(100, 100, 500, 300);
-        JPanel mainPanel = new JPanel(new GridLayout(9, 2));
+        JPanel mainPanel = new JPanel(new GridLayout(bCreate ? 10 : 9, 2));
         mainPanel.setBorder(BorderFactory.createEtchedBorder());
         this.getContentPane().add(mainPanel);
         return mainPanel;
@@ -127,8 +132,23 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         mainPanel.add(createLabel(mTrack.fileName));
         mainPanel.add(createLabel("Directory"));
         mainPanel.add(createLabel(mTrack.relativePath));
+        if (bCreate)
+        {
+            mainPanel.add(createNormalizeRow());
+            mainPanel.add(new JPanel());
+        }
         mainPanel.add(createLabel(""));
         mainPanel.add(createokcancel());
+    }
+
+    private JPanel createNormalizeRow()
+    {
+        JPanel jp = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        jp.add(normalizeCheckBox);
+        targetLufsField.setColumns(5);
+        jp.add(targetLufsField);
+        jp.add(new JLabel("LUFS"));
+        return jp;
     }
 
     private JPanel prepStyle()
@@ -190,6 +210,8 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
                 mTrack.style = (Style) cbStyle.getSelectedItem();
                 mTrack.normalizedOrchestra = SearchTermBuilder.stripAccents(mTrack.orchestra);
                 mTrack.searchTerm = SearchTermBuilder.buildSearchTerm(mTrack.title, mTrack.orchestra);
+                if (normalizeCheckBox.isSelected() && !applyNormalization())
+                    return;
                 bChanged = true;
                 this.dispose();
             }
@@ -216,6 +238,37 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         else if (e.getActionCommand().equals("comboBoxChanged"))
         {
             bFieldChanged = true;
+        }
+    }
+
+    private boolean applyNormalization()
+    {
+        double targetLufs;
+        try
+        {
+            targetLufs = Double.parseDouble(targetLufsField.getText().trim());
+        }
+        catch (NumberFormatException ex)
+        {
+            JOptionPane.showMessageDialog(this, "Target LUFS must be a number.");
+            return false;
+        }
+        try
+        {
+            TrackNormalizer.Result result = TrackNormalizer.normalize(mSourceFile, targetLufs);
+            mTrack.fileName = result.finalFile().getName();
+            String ext = AddFolderDialog.getFileExtension(mTrack.fileName).toLowerCase();
+            mTrack.fileType = ext.equals("flac") ? Track.Type.FLAC : ext.equals("mp3") ? Track.Type.MP3 : Track.Type.WAV;
+            mTrack.calculatedTime = SoundUtils.getLength(result.finalFile().getPath());
+            mTrack.songTime = SoundUtils.formatIntoMMSS(Math.round(mTrack.calculatedTime));
+            if (result.clipped())
+                JOptionPane.showMessageDialog(this, mTrack.fileName + " clipped and was hard-limited to 0 dBFS.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            JOptionPane.showMessageDialog(this, "Could not normalize file: " + ex.getMessage());
+            return false;
         }
     }
 

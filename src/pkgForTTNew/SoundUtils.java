@@ -54,11 +54,7 @@ public class SoundUtils implements LineListener
             aFormat = stream.getFormat();
             frameLength = stream.getFrameLength();
             frameSize = format.getFrameSize();
-            DataLine.Info info = new DataLine.Info(Clip.class, stream.getFormat(),
-                    ((int) stream.getFrameLength() * format.getFrameSize()));
-            Clip clip = (Clip) AudioSystem.getLine(info);
-            clip.close();
-            return clip.getBufferSize() / (clip.getFormat().getFrameSize() * clip.getFormat().getFrameRate());
+            return frameLength / aFormat.getFrameRate();
         }
         catch (IOException ex)
         {
@@ -69,11 +65,6 @@ public class SoundUtils implements LineListener
         catch (UnsupportedAudioFileException ex)
         {
             Utilities.out("SoundUtils.getLength() UnsupportedAudioFileException:" + ex.getMessage());
-            Utilities.out(path);
-        }
-        catch (LineUnavailableException ex)
-        {
-            Utilities.out("SoundUtils.getLength() LineUnavailableException:" + ex.getMessage());
             Utilities.out(path);
         }
         return -1;

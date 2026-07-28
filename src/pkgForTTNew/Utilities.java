@@ -12,6 +12,7 @@ import javax.sound.sampled.AudioFormat;
 import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.Clip;
+import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineListener;
 import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.UnsupportedAudioFileException;
@@ -487,6 +488,17 @@ public class Utilities
                         baseFormat.getSampleRate(), 16, baseFormat.getChannels(),
                         baseFormat.getChannels() * 2, baseFormat.getSampleRate(), false);
                 audioInputStream = AudioSystem.getAudioInputStream(pcmFormat, audioInputStream);
+            }
+            AudioFormat playbackFormat = audioInputStream.getFormat();
+            if (!AudioSystem.isLineSupported(new DataLine.Info(Clip.class, playbackFormat)))
+            {
+                // This machine's mixer can't open a Clip at the file's native bit depth
+                // (e.g. 24-bit); downconvert to 16-bit for playback only. The stored file
+                // itself keeps its original bit depth.
+                AudioFormat fallbackFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+                        playbackFormat.getSampleRate(), 16, playbackFormat.getChannels(),
+                        playbackFormat.getChannels() * 2, playbackFormat.getSampleRate(), false);
+                audioInputStream = AudioSystem.getAudioInputStream(fallbackFormat, audioInputStream);
             }
             // create clip reference
             clipOut = AudioSystem.getClip();

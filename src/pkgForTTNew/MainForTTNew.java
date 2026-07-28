@@ -229,7 +229,7 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         mTrackTable.setAutoCreateRowSorter(true);
         mTrackTable.setDragEnabled(true);
         mTrackTable.setTransferHandler(new TangoTransferHandler());
-        mTrackTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        mTrackTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         mTrackTable.addMouseListener(this);
         TableColumnModel columnModel = mTrackTable.getColumnModel();
         columnModel.getColumn(0).setPreferredWidth(200);
@@ -422,6 +422,8 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
             bContinuousPlaying = false;
             startPlaylistButton.setText("Start Playlist");
             stopPlaylistButton.setEnabled(false);
+            playButton.setEnabled(true);
+            playButton.setText("Play");
             mCurrentlyPlayingPlaylist.currentlyPlayingTanda = 0l;
             mCurrentlyPlayingPlaylist.currentlyPlayingTrack = 0l;
             mCurrentlyPlayingPlaylist = null;
@@ -472,6 +474,7 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
                 mClip = null;
             }
             bContinuousPlaying = true;
+            playButton.setEnabled(false);
             mCurrentlyPlayingPlaylist = null;
             Tanda tanda = null;
             Track track = null;
@@ -611,17 +614,12 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         }
         else if (e.getSource() == resetButton)
         {
+            // Reset never touches playback (mClip/playButton) - it only resets the
+            // track list/search and the tandas pane back to their startup state.
             mTrackTableModel.reset();
             playlistSearchTerm.setText("");
-            if (mClip != null)
-            {
-                mClip.stop();
-                mClip.close();
-                // mClip.flush();
-                mClip = null;
-                playButton.setText("Play");
-                // bPlayingOneTrack = false;
-            }
+            mTandaTreeModel.reset();
+            mTandaTreeModel.notifyTreeModelHasChanged();
         }
         else if (e.getSource() == resetTandaTree)
         {
@@ -645,9 +643,8 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
                 mClip.close();
                 // mClip.flush();
                 mClip = null;
+                playButton.setText("Play");
                 return;
-                // playButton.setText("Play");
-                // bPlayingOneTrack = false;
             }
             int row = mTrackTable.getSelectedRow();
             if (row == -1)
@@ -655,7 +652,6 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
             Object obj = mTrackTable.getValueAt(row, 6);
             long UID = (long) obj;
             playButton.setText("Stop");
-            // bPlayingOneTrack = true;
             play(UID);
         }
     }
@@ -859,6 +855,8 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         startPlaylistButton.setText("Play");
         mClip = null;
         bContinuousPlaying = false;
+        playButton.setEnabled(true);
+        playButton.setText("Play");
         nextSongButton.setEnabled(false);
         JOptionPane.showMessageDialog(null, "Playlist has ended");
         startPlaylistButton.setText("Start Playlist");
@@ -1302,6 +1300,7 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         mCurrentlyPlayingPlaylist.currentlyPlayingTanda = tanda.uniqueId;
         mCurrentlyPlayingPlaylist.currentlyPlayingTrack = track.uniqueId;
         bContinuousPlaying = true;
+        playButton.setEnabled(false);
         startPlaylistButton.setText("Pause Playlist");
         stopPlaylistButton.setEnabled(true);
         nextSongButton.setEnabled(true);
@@ -1410,6 +1409,8 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         }
         startPlaylistButton.setText("Start Playlist");
         stopPlaylistButton.setEnabled(false);
+        playButton.setEnabled(true);
+        playButton.setText("Play");
         nextSongButton.setEnabled(false);
         bottomLine.setText(" ");
     }

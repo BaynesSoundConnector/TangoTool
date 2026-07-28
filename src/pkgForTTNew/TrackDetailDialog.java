@@ -1,14 +1,17 @@
 package pkgForTTNew;
 
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import pkgForTTNew.Track.Style;
 
+import javax.accessibility.Accessible;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -18,8 +21,12 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+import javax.swing.plaf.basic.BasicComboPopup;
 
 public class TrackDetailDialog extends JDialog implements ActionListener, DocumentListener
 {
@@ -35,8 +42,17 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
     JTextField targetLufsField = new JTextField(String.valueOf(AddFolderDialog.DEFAULT_TARGET_LUFS));
     private boolean bFieldChanged = false;
     private boolean bCreate = false;
+    private boolean bBulk = false;
     Track mTrack;
     File mSourceFile;
+    List<Track> mTracks;
+    private static final String BULK_NO_STYLE_CHANGE = "(No change)";
+    private JComboBox<Object> cbBulkStyle;
+    private boolean bTitleDirty = false;
+    private boolean bOrchestraDirty = false;
+    private boolean bAlbumDirty = false;
+    private boolean bYearDirty = false;
+    private boolean bStyleDirty = false;
 
     // Update an existing track
     public TrackDetailDialog(Track track)
@@ -46,6 +62,7 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         JPanel mainPanel = setup();
         mTrack = track;
         createPanel(mainPanel);
+        finalizeSize();
     }
 
     // Create a new track
@@ -78,6 +95,29 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         if (mTrack.relativePath == null)
             return;
         createPanel(mainPanel);
+        finalizeSize();
+    }
+
+    // Bulk-edit multiple tracks at once. Only fields the user actually
+    // changes are applied, so unedited fields are left alone on every track.
+    public TrackDetailDialog(List<Track> tracks)
+    {
+        super((JDialog) null, true);
+        bBulk = true;
+        mTracks = tracks;
+        JPanel mainPanel = setup();
+        createBulkPanel(mainPanel);
+        finalizeSize();
+    }
+
+    // Size the dialog to exactly fit its content instead of guessing a
+    // pixel height, which was clipping the OK/Cancel row and combo boxes.
+    private void finalizeSize()
+    {
+        pack();
+        Dimension packed = getSize();
+        setSize(Math.max(packed.width, 780), packed.height);
+        setLocation(100, 100);
     }
 
     public Track getTrack()
@@ -107,11 +147,95 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
 
     private JPanel setup()
     {
-        setBounds(100, 100, 500, 300);
-        JPanel mainPanel = new JPanel(new GridLayout(bCreate ? 10 : 9, 2));
-        mainPanel.setBorder(BorderFactory.createEtchedBorder());
+        int rows = bBulk ? 7 : (bCreate ? 10 : 9);
+        JPanel mainPanel = new JPanel(new GridLayout(rows, 2, 6, 4));
+        mainPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEtchedBorder(),
+                BorderFactory.createEmptyBorder(6, 10, 12, 10)));
         this.getContentPane().add(mainPanel);
         return mainPanel;
+    }
+
+    private void createBulkPanel(JPanel mainPanel)
+    {
+        mainPanel.add(createLabel(mTracks.size() + " tracks selected"));
+        mainPanel.add(createLabel("Blank fields are left unchanged"));
+        mainPanel.add(createLabel("Title"));
+        mainPanel.add(createBulkField(tTitle, () -> bTitleDirty = true));
+        mainPanel.add(createLabel("Orchestra"));
+        mainPanel.add(createBulkField(tOrchestra, () -> bOrchestraDirty = true));
+        mainPanel.add(createLabel("Style"));
+        mainPanel.add(prepBulkStyle());
+        mainPanel.add(createLabel("Album"));
+        mainPanel.add(createBulkField(tAlbum, () -> bAlbumDirty = true));
+        mainPanel.add(createLabel("Year Recorded"));
+        mainPanel.add(createBulkField(tYear, () -> bYearDirty = true));
+        mainPanel.add(createLabel(""));
+        mainPanel.add(createokcancel());
+    }
+
+    private JPanel createBulkField(JTextField textField, Runnable markDirty)
+    {
+        JPanel jp = new JPanel();
+        textField.setColumns(20);
+        jp.setLayout(new FlowLayout(FlowLayout.LEFT));
+        textField.getDocument().addDocumentListener(new DocumentListener()
+        {
+            @Override
+            public void insertUpdate(DocumentEvent e) { markDirty.run(); }
+            @Override
+            public void removeUpdate(DocumentEvent e) { markDirty.run(); }
+            @Override
+            public void changedUpdate(DocumentEvent e) { markDirty.run(); }
+        });
+        jp.add(textField);
+        return jp;
+    }
+
+    private JPanel prepBulkStyle()
+    {
+        JPanel jp = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        Style[] styles = Track.Style.values();
+        Object[] items = new Object[styles.length + 1];
+        items[0] = BULK_NO_STYLE_CHANGE;
+        System.arraycopy(styles, 0, items, 1, styles.length);
+        cbBulkStyle = new JComboBox<Object>(items);
+        cbBulkStyle.setSelectedIndex(0);
+        cbBulkStyle.addActionListener(e -> bStyleDirty = true);
+        scrollPopupToTop(cbBulkStyle);
+        jp.add(cbBulkStyle);
+        return jp;
+    }
+
+    private void applyBulkEdits()
+    {
+        boolean styleDirty = bStyleDirty && cbBulkStyle.getSelectedItem() instanceof Style;
+        if (!bTitleDirty && !bOrchestraDirty && !bAlbumDirty && !bYearDirty && !styleDirty)
+            return;
+        String newTitle = tTitle.getText().strip();
+        String newOrchestra = tOrchestra.getText().strip();
+        String newAlbum = tAlbum.getText().strip();
+        String newYear = tYear.getText().strip();
+        Style newStyle = styleDirty ? (Style) cbBulkStyle.getSelectedItem() : null;
+        for (Track t : mTracks)
+        {
+            if (bTitleDirty)
+                t.title = newTitle;
+            if (bOrchestraDirty)
+                t.orchestra = newOrchestra;
+            if (bAlbumDirty)
+                t.album = newAlbum;
+            if (bYearDirty)
+                t.year = newYear;
+            if (styleDirty)
+                t.style = newStyle;
+            if (bTitleDirty || bOrchestraDirty)
+            {
+                t.normalizedOrchestra = SearchTermBuilder.stripAccents(t.orchestra);
+                t.searchTerm = SearchTermBuilder.buildSearchTerm(t.title, t.orchestra);
+            }
+        }
+        bChanged = true;
     }
 
     private void createPanel(JPanel mainPanel)
@@ -129,9 +253,9 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         mainPanel.add(createLabel("Time"));
         mainPanel.add(new JLabel(mTrack.songTime));
         mainPanel.add(createLabel("File"));
-        mainPanel.add(createLabel(mTrack.fileName));
+        mainPanel.add(createReadOnlyField(mTrack.fileName));
         mainPanel.add(createLabel("Directory"));
-        mainPanel.add(createLabel(mTrack.relativePath));
+        mainPanel.add(createReadOnlyField(mTrack.relativePath));
         if (bCreate)
         {
             mainPanel.add(createNormalizeRow());
@@ -160,8 +284,34 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         // cbStyle.addItem(Track.Style.Milonga.toString());
         cbStyle.setSelectedItem(mTrack.style);
         cbStyle.addActionListener(this);
+        scrollPopupToTop(cbStyle);
         jp.add(cbStyle);
         return jp;
+    }
+
+    // Most-used styles are listed first; always open the dropdown scrolled to
+    // the top instead of wherever the currently-selected item happens to be.
+    private void scrollPopupToTop(JComboBox<?> combo)
+    {
+        combo.addPopupMenuListener(new PopupMenuListener()
+        {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e)
+            {
+                SwingUtilities.invokeLater(() ->
+                {
+                    Accessible a = combo.getAccessibleContext().getAccessibleChild(0);
+                    if (a instanceof BasicComboPopup)
+                        ((BasicComboPopup) a).getList().ensureIndexIsVisible(0);
+                });
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
     }
 
     private Component createLabel(String in)
@@ -185,6 +335,18 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         return panel;
     }
 
+    private JPanel createReadOnlyField(String textContent)
+    {
+        JPanel jp = new JPanel();
+        JTextField textField = new JTextField(textContent);
+        textField.setColumns(20);
+        textField.setEditable(false);
+        textField.setToolTipText(textContent);
+        jp.setLayout(new FlowLayout(FlowLayout.LEFT));
+        jp.add(textField);
+        return jp;
+    }
+
     private JPanel createField(String textContent, JTextField textField)
     {
         JPanel jp = new JPanel();
@@ -201,6 +363,12 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
     {
         if (e.getActionCommand().equals("OK"))
         {
+            if (bBulk)
+            {
+                applyBulkEdits();
+                this.dispose();
+                return;
+            }
             if (bCreate)
             {
                 mTrack.title = tTitle.getText().strip();

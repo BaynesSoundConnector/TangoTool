@@ -61,20 +61,25 @@ public class MouseEvents
         if (SwingUtilities.isRightMouseButton(me))
         {
             int row = target.rowAtPoint(me.getPoint());
-            int index = mTrackTable.convertRowIndexToModel(row);
-            int test = mTrackTable.convertRowIndexToView(row);
-            Object obj = mTrackTable.getModel().getValueAt(row, 6);
-            Object obj2 = mTrackTable.getModel().getValueAt(index, 6);
-            Object obj3 = mTrackTable.getModel().getValueAt(test, 6);
-            Track track;
-            long UID = 0l;
-            if (obj instanceof Long)
+            if (row < 0)
+                return false;
+            if (!target.isRowSelected(row))
+                target.setRowSelectionInterval(row, row);
+            ArrayList<Track> tracks = new ArrayList<Track>();
+            for (int viewRow : target.getSelectedRows())
             {
-                UID = (long) obj2;
-                track = mTrackTableModel.getTrackbyUniqueId(UID);
+                int modelRow = target.convertRowIndexToModel(viewRow);
+                Object obj = target.getModel().getValueAt(modelRow, 6);
+                long uid = (obj instanceof Long) ? (Long) obj : Long.parseLong((String) obj);
+                Track t = mTrackTableModel.getTrackbyUniqueId(uid);
+                if (t != null)
+                    tracks.add(t);
             }
-            else
-                track = mTrackTableModel.getTrack(index);
+            if (tracks.isEmpty())
+                return false;
+            boolean multi = tracks.size() > 1;
+            Track track = tracks.get(0);
+            long UID = track.uniqueId;
             String[] optionLabels = { "Copy", "Edit", "Tandas", "Export" };
             JRadioButton[] radioButtons = new JRadioButton[optionLabels.length];
             ButtonGroup group = new ButtonGroup();
@@ -85,8 +90,12 @@ public class MouseEvents
                 group.add(radioButtons[i]);
                 radioPanel.add(radioButtons[i]);
             }
-            radioButtons[0].setSelected(true);
-            int rc = JOptionPane.showConfirmDialog(null, radioPanel, track.title,
+            // Copy and Tandas only make sense for a single track
+            radioButtons[0].setEnabled(!multi);
+            radioButtons[2].setEnabled(!multi);
+            radioButtons[multi ? 1 : 0].setSelected(true);
+            String dialogTitle = multi ? (tracks.size() + " tracks selected") : track.title;
+            int rc = JOptionPane.showConfirmDialog(null, radioPanel, dialogTitle,
                     JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
             if (rc != JOptionPane.OK_OPTION)
                 return false;
@@ -103,12 +112,15 @@ public class MouseEvents
             }
             else if (selectedValue.equals("Edit"))
             {
-                TrackDetailDialog tdd = new TrackDetailDialog(track);
+                TrackDetailDialog tdd = multi ? new TrackDetailDialog(tracks) : new TrackDetailDialog(track);
                 tdd.setVisible(true);
                 if (tdd.bChanged)
                 {
-                    track.normalizedOrchestra = SearchTermBuilder.stripAccents(track.orchestra);
-                    track.searchTerm = SearchTermBuilder.buildSearchTerm(track.title, track.orchestra);
+                    if (!multi)
+                    {
+                        track.normalizedOrchestra = SearchTermBuilder.stripAccents(track.orchestra);
+                        track.searchTerm = SearchTermBuilder.buildSearchTerm(track.title, track.orchestra);
+                    }
                     mTrackTableModel.setChanged(true);
                     mTrackTableModel.fireTableDataChanged();
                 }
@@ -132,14 +144,31 @@ public class MouseEvents
                 {
                     String exportDir = jfc.getSelectedFile().getAbsolutePath();
                     mCurrentState.put("ExportDirectory", exportDir);
-                    if (ExportTrack.exportTrack(track, mMusicBasePath, exportDir))
-                        Utilities.msg("Exported: " + track.title + " - " + track.orchestra + "\nTo: " + exportDir);
+                    int successCount = 0;
+                    StringBuilder failures = new StringBuilder();
+                    for (Track t : tracks)
+                    {
+                        if (ExportTrack.exportTrack(t, mMusicBasePath, exportDir))
+                            successCount++;
+                        else
+                            failures.append(t.title).append(" - ").append(t.orchestra).append("\n");
+                    }
+                    StringBuilder summary = new StringBuilder();
+                    summary.append("Exported ").append(successCount).append(" of ").append(tracks.size())
+                            .append(tracks.size() == 1 ? " track" : " tracks").append("\nTo: ").append(exportDir);
+                    if (failures.length() > 0)
+                        summary.append("\n\nFailed:\n").append(failures);
+                    Utilities.msg(summary.toString());
                 }
             }
             return true;
         }
         if (me.getClickCount() == 2)
         {
+            // A playlist is playing; the play button is disabled to block this. Don't
+            // let a track-table double-click play a track over a running playlist.
+            if (!playButton.isEnabled())
+                return false;
             int row = target.getSelectedRow(); // select a row
             // int index = mTrackTable.convertRowIndexToModel(row);
             // int column = target.getSelectedColumn(); // select a column

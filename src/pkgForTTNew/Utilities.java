@@ -492,7 +492,7 @@ public class Utilities
                 return null;
             }
             Utilities.out("Play:" + fileName);
-            audioInputStream = AudioSystem.getAudioInputStream(audioFile.getAbsoluteFile());
+            audioInputStream = SoundUtils.getAudioInputStreamRobust(audioFile.getAbsoluteFile());
             AudioFormat baseFormat = audioInputStream.getFormat();
             if (baseFormat.getEncoding() != AudioFormat.Encoding.PCM_SIGNED)
             {

@@ -32,35 +32,28 @@ public class SoundUtils implements LineListener
         catch (Exception ex) { /* fall through to frame-count approach */ }
 
         AudioInputStream stream = null;
-        AudioFormat aFormat = null;
-        long frameLength = 0;
-        long frameSize = 0;
         try
         {
             stream = AudioSystem.getAudioInputStream(new File(path));
-            AudioFormat format = stream.getFormat();
-            Encoding encoding = format.getEncoding();
-            Map<String, Object> properties = format.properties();
-            // Java 1.6 doesn't support AudioFormat.Encoding.PCM_FLOAT, so
-            // certain .wav files won't work.
-            // Need to upgrade to Java 1.7
-            if (format.getEncoding() != AudioFormat.Encoding.PCM_SIGNED)
+            AudioFormat baseFormat = stream.getFormat();
+            // Non-PCM formats (MP3, float WAV) must be converted to a fixed target
+            // format, not derived from their own bit depth: compressed encodings
+            // report AudioSystem.NOT_SPECIFIED (-1) for sampleSizeInBits, which broke
+            // this when it was doubled instead of fixed at 16.
+            if (baseFormat.getEncoding() != AudioFormat.Encoding.PCM_SIGNED)
             {
-                format = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, format.getSampleRate(),
-                        format.getSampleSizeInBits() * 2, format.getChannels(), format.getFrameSize() * 2,
-                        format.getFrameRate(), true); // big endian
-                stream = AudioSystem.getAudioInputStream(format, stream);
+                AudioFormat pcmFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+                        baseFormat.getSampleRate(), 16, baseFormat.getChannels(),
+                        baseFormat.getChannels() * 2, baseFormat.getSampleRate(), false);
+                stream = AudioSystem.getAudioInputStream(pcmFormat, stream);
             }
-            aFormat = stream.getFormat();
-            frameLength = stream.getFrameLength();
-            frameSize = format.getFrameSize();
-            return frameLength / aFormat.getFrameRate();
+            AudioFormat format = stream.getFormat();
+            return stream.getFrameLength() / format.getFrameRate();
         }
         catch (IOException ex)
         {
             Utilities.out("SoundUtils.getLength() IOException:" + ex.getMessage());
             Utilities.out(path);
-            Utilities.out("format=" + aFormat.toString() + ", frame length=" + frameLength + ", frameSize=" + frameSize);
         }
         catch (UnsupportedAudioFileException ex)
         {
@@ -109,34 +102,33 @@ public class SoundUtils implements LineListener
      */
     public static float musicFileValid(File file)
     {
-        // RSLT rslt = new RSLT();
         try
         {
-            AudioInputStream stream;
-            stream = AudioSystem.getAudioInputStream(file);
-            AudioFormat format = stream.getFormat();
-            AudioFileFormat aff = new AudioFileFormat(AudioFileFormat.Type.WAVE, format, format.getFrameSize());
-            Map<String, Object> properties = aff.properties();
-            if (properties.size() > 0)
-                Utilities.out("SoundUtils.musicFileValid() properties are present:" + file.getPath());
-            if (format.getEncoding() != AudioFormat.Encoding.PCM_SIGNED)
+            AudioInputStream stream = AudioSystem.getAudioInputStream(file);
+            AudioFormat baseFormat = stream.getFormat();
+            // Same fixed-16-bit-target conversion as Utilities.playFile2() uses for
+            // actual playback; see getLength() above for why doubling the reported
+            // bit depth (the old approach here) broke on compressed/float formats.
+            if (baseFormat.getEncoding() != AudioFormat.Encoding.PCM_SIGNED)
             {
-                format = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, format.getSampleRate(),
-                        format.getSampleSizeInBits() * 2, format.getChannels(), format.getFrameSize() * 2,
-                        format.getFrameRate(), true); // big endian
-                stream = AudioSystem.getAudioInputStream(format, stream);
+                AudioFormat pcmFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+                        baseFormat.getSampleRate(), 16, baseFormat.getChannels(),
+                        baseFormat.getChannels() * 2, baseFormat.getSampleRate(), false);
+                stream = AudioSystem.getAudioInputStream(pcmFormat, stream);
             }
-            DataLine.Info info = new DataLine.Info(Clip.class, stream.getFormat(),
-                    ((int) stream.getFrameLength() * format.getFrameSize()));
-            Clip clip = (Clip) AudioSystem.getLine(info);
-            // clip.addLineListener();
+            AudioFormat format = stream.getFormat();
+            if (!AudioSystem.isLineSupported(new DataLine.Info(Clip.class, format)))
+            {
+                AudioFormat fallbackFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+                        format.getSampleRate(), 16, format.getChannels(),
+                        format.getChannels() * 2, format.getSampleRate(), false);
+                stream = AudioSystem.getAudioInputStream(fallbackFormat, stream);
+                format = stream.getFormat();
+            }
+            Clip clip = AudioSystem.getClip();
             clip.open(stream);
-            clip.start();
-            // wait(100);
-            clip.stop();
+            float time = clip.getFrameLength() / format.getFrameRate();
             clip.close();
-            float time = clip.getBufferSize() / (clip.getFormat().getFrameSize() * clip.getFormat().getFrameRate());
-            // rslt.bValid = true;
             return time;
         }
         catch (LineUnavailableException ex)
@@ -149,7 +141,7 @@ public class SoundUtils implements LineListener
         }
         catch (UnsupportedAudioFileException ex)
         {
-            //Utilities.out("SoundUtils.musicFileValid() UnsupportedAudioFileException:"+file.getName()); 
+            //Utilities.out("SoundUtils.musicFileValid() UnsupportedAudioFileException:"+file.getName());
             // ex.getMessage();
         }
         catch (IllegalArgumentException ex)

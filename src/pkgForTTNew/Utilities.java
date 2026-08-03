@@ -375,6 +375,12 @@ public class Utilities
         return clipOut;
     }
 
+    // Matches only get accepted below this Levenshtein distance (case-insensitive).
+    // Legitimate matches seen in practice (extension change, case difference) score
+    // 3-8; unrelated files in the same folder score 20+, so this leaves a wide margin
+    // while still refusing to guess when nothing in the folder is actually close.
+    private static final int MAX_FIND_FILE_DISTANCE = 15;
+
     public static String findFile(String musicBasePath, String subDir, String fileName)
     {
         String dir = musicBasePath + "\\" + subDir;
@@ -387,12 +393,15 @@ public class Utilities
         }
         LevenshteinDistance levenshtein = new LevenshteinDistance();
         String match = "";
-        int strDistance = 100;
+        int strDistance = MAX_FIND_FILE_DISTANCE + 1;
+        String fileNameLower = fileName.toLowerCase();
         // Utilities.out("Matching:"+fileName);
         for (File file : files)
         {
+            if (!file.isFile())
+                continue;
             String str1 = file.getName();
-            int distance = levenshtein.apply(str1, fileName);
+            int distance = levenshtein.apply(str1.toLowerCase(), fileNameLower);
             if (distance < strDistance)
             {
                 match = str1;
@@ -401,7 +410,7 @@ public class Utilities
             }
             // Utilities.out("Distance="+distance+" for:"+str1);
         }
-        if (strDistance < 100)
+        if (strDistance <= MAX_FIND_FILE_DISTANCE)
         {
             Utilities.out("Final match for fileName:" + fileName + "\n is " + match + "\n distance is " + strDistance);
             return match;
@@ -424,12 +433,15 @@ public class Utilities
         }
         LevenshteinDistance levenshtein = new LevenshteinDistance();
         String match = "";
-        int strDistance = 100;
+        int strDistance = MAX_FIND_FILE_DISTANCE + 1;
+        String subDirLower = subDir.toLowerCase();
         // Utilities.out("Matching:"+fileName);
         for (File file : files)
         {
+            if (!file.isDirectory())
+                continue;
             String str1 = file.getName();
-            int distance = levenshtein.apply(str1, subDir);
+            int distance = levenshtein.apply(str1.toLowerCase(), subDirLower);
             if (distance < strDistance)
             {
                 match = str1;
@@ -438,7 +450,7 @@ public class Utilities
             }
             // Utilities.out("Distance="+distance+" for:"+str1);
         }
-        if (strDistance < 100)
+        if (strDistance <= MAX_FIND_FILE_DISTANCE)
         {
             Utilities.out("Final match for fileName:" + subDir + "\n is " + match + "\n distance is " + strDistance);
             return match;

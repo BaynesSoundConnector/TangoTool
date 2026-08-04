@@ -8,7 +8,9 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import pkgForTTNew.Track.Style;
 
@@ -178,7 +180,7 @@ public class AddFolderDialog extends JDialog implements ActionListener
 
             if (!normalize)
             {
-                addTracksToModel(filesToAdd, orchestra.getText(), album.getText());
+                addTracksToModel(filesToAdd, orchestra.getText(), album.getText(), java.util.Collections.emptyMap());
                 this.dispose();
                 return;
             }
@@ -208,6 +210,7 @@ public class AddFolderDialog extends JDialog implements ActionListener
         SwingWorker<List<File>, Integer> worker = new SwingWorker<>()
         {
             List<File> finalFiles = new ArrayList<>();
+            Map<File, Double> measuredLufsByFile = new HashMap<>();
             List<String> clippedFiles = new ArrayList<>();
             List<String> failedFiles = new ArrayList<>();
 
@@ -221,6 +224,7 @@ public class AddFolderDialog extends JDialog implements ActionListener
                     {
                         TrackNormalizer.Result result = TrackNormalizer.normalize(file, targetLufs);
                         finalFiles.add(result.finalFile());
+                        measuredLufsByFile.put(result.finalFile(), result.finalLufs());
                         if (result.clipped())
                             clippedFiles.add(result.finalFile().getName());
                     }
@@ -250,7 +254,7 @@ public class AddFolderDialog extends JDialog implements ActionListener
                 try
                 {
                     List<File> results = get();
-                    addTracksToModel(results, orchestraText, albumText);
+                    addTracksToModel(results, orchestraText, albumText, measuredLufsByFile);
                     reportSummary(clippedFiles, failedFiles);
                 }
                 catch (Exception ex)
@@ -291,7 +295,8 @@ public class AddFolderDialog extends JDialog implements ActionListener
         JOptionPane.showMessageDialog(null, scrollPane, title, JOptionPane.INFORMATION_MESSAGE);
     }
 
-    private void addTracksToModel(List<File> files, String orchestraText, String albumText)
+    private void addTracksToModel(List<File> files, String orchestraText, String albumText,
+            Map<File, Double> measuredLufsByFile)
     {
         StringBuffer added = new StringBuffer();
         for (File file : files)
@@ -299,6 +304,7 @@ public class AddFolderDialog extends JDialog implements ActionListener
             Track track = new Track();
             track.album = albumText;
             track.orchestra = orchestraText;
+            track.measuredLufs = measuredLufsByFile.get(file);
             track.calculatedTime = SoundUtils.getLength(file.getPath());
             if (track.calculatedTime == 0L)
             {

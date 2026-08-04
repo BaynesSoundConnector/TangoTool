@@ -158,6 +158,9 @@ public class TrackReader
                 currentTrack.calculatedTime = Float.parseFloat(text);
                 // parseDouble(text);
                 break;
+            case "measuredLufs":
+                currentTrack.measuredLufs = parseDouble(text);
+                break;
             case "status":
                 String status = text;
                 try

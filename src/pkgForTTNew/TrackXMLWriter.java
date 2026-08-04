@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 public class TrackXMLWriter
 {
@@ -59,8 +61,16 @@ public class TrackXMLWriter
     {
         Utilities.out("Writing:"+filePath);
 
+        // Write to a temp file in the same directory and only replace the real file
+        // once the write has fully succeeded. Opening filePath directly (the old
+        // approach) truncates it immediately, so any failure partway through --
+        // e.g. another process briefly holding the file open -- left tracks.xml
+        // empty or missing with no way back short of an old backup. This never
+        // touches the real file at all unless the new content is complete.
+        File target = new File(filePath);
+        File tempFile = File.createTempFile("tracks-", ".xml.tmp", target.getAbsoluteFile().getParentFile());
         try (Writer out = new BufferedWriter(
-                new OutputStreamWriter(new FileOutputStream(filePath), StandardCharsets.UTF_8)))
+                new OutputStreamWriter(new FileOutputStream(tempFile), StandardCharsets.UTF_8)))
         {
             out.write("<Tracks>\n");
             for (Track t : tracks)
@@ -88,6 +98,8 @@ public class TrackXMLWriter
                     out.write(tag("fileType", t.fileType.toString()));
                 out.write(tag("comment", t.comment));
                 out.write(tag("calculatedTime", t.calculatedTime));
+                if (t.measuredLufs != null)
+                    out.write(tag("measuredLufs", t.measuredLufs));
                 out.write(tag("status", t.status));
                 out.write(tag("Version", t.Version));
                 out.write(tag("spoof", t.spoof));
@@ -105,6 +117,13 @@ public class TrackXMLWriter
             }
             out.write("</Tracks>\n");
         }
+        catch (IOException ex)
+        {
+            tempFile.delete();
+            throw ex;
+        }
+        Files.move(tempFile.toPath(), target.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
 

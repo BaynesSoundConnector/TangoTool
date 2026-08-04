@@ -28,6 +28,7 @@ public class Track
 	String vocalist;
 	Type fileType;
 	float calculatedTime;
+	Double measuredLufs;
 	Track.Status status;
 	String Version = "1.0";
 	int spoof;

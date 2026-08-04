@@ -24,6 +24,9 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -235,10 +238,11 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         columnModel.getColumn(0).setPreferredWidth(200);
         columnModel.getColumn(1).setPreferredWidth(100);
         columnModel.getColumn(2).setPreferredWidth(30);
-        columnModel.getColumn(3).setPreferredWidth(5);
+        columnModel.getColumn(3).setPreferredWidth(4);
         columnModel.getColumn(4).setPreferredWidth(10);
         columnModel.getColumn(5).setPreferredWidth(30);
-        columnModel.getColumn(6).setPreferredWidth(7);
+        columnModel.getColumn(6).setPreferredWidth(12);
+        columnModel.getColumn(TrackTableModel.COL_UID).setPreferredWidth(6);
         JScrollPane scrollPane = new JScrollPane(mTrackTable);
         mTrackTable.setFillsViewportHeight(true);
         JPanel panel = new JPanel(new BorderLayout());
@@ -363,6 +367,9 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         JMenuItem validateMenuItem = new JMenuItem("Validate");
         validateMenuItem.addActionListener(this);
         menu.add(validateMenuItem);
+        JMenuItem calculateLufsMenuItem = new JMenuItem("Calculate LUFS");
+        calculateLufsMenuItem.addActionListener(this);
+        menu.add(calculateLufsMenuItem);
         return menuBar;
     }
 
@@ -608,6 +615,11 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
                 JOptionPane.showMessageDialog(null, message);
             }
         }
+        else if (e.getActionCommand().equalsIgnoreCase("Calculate LUFS"))
+        {
+            CalculateLufsDialog cld = new CalculateLufsDialog(mTrackTableModel, mMusicBasePath);
+            cld.setVisible(true);
+        }
         else if (e.getActionCommand().equalsIgnoreCase("preferences"))
         {
             out("preferences");
@@ -649,7 +661,7 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
             int row = mTrackTable.getSelectedRow();
             if (row == -1)
                 return;
-            Object obj = mTrackTable.getValueAt(row, 6);
+            Object obj = mTrackTable.getValueAt(row, TrackTableModel.COL_UID);
             long UID = (long) obj;
             playButton.setText("Stop");
             play(UID);
@@ -659,7 +671,7 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
     private long getTrackUIDFromRow(int row)
     {
         // String str = mTrackTableModel.getValueAt(row, 6);
-        Object obj = mTrackTableModel.getValueAt(row, 6);
+        Object obj = mTrackTableModel.getValueAt(row, TrackTableModel.COL_UID);
         // long UID = Long.parseLong(str);
         // Track track = mTrackTableModel.getTrackbyUniqueId(UID);
         // return track.uniqueId;
@@ -1072,22 +1084,23 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
             boolean rc = backupDatabaseXML();
             if (rc != true)
             {
-                JOptionPane.showMessageDialog(null, "Database.xml file rename for backup failed, data not saved:");
+                JOptionPane.showMessageDialog(null, "Database.xml backup failed, data not saved:");
                 return;
             }
-            BufferedWriter writer = new BufferedWriter(new FileWriter(mMusicBasePath + "\\" + "database.xml"));
             rc = backupTracksXML();
             if (rc != true)
             {
-                JOptionPane.showMessageDialog(null, "Tracks.xml file rename for backup failed, data not saved:");
+                JOptionPane.showMessageDialog(null, "Tracks.xml backup failed, data not saved:");
                 return;
             }
             String fno = mMusicBasePath + "\\" + "tracks.xml";
-            mTrackTableModel.writeNew(fno);
-            writer.write("***tracks***\n");
-            mTandaTreeModel.write(writer);
-            mPlaylistTreeModel.write(writer);
-            writer.close();
+            if (!mTrackTableModel.writeNew(fno))
+            {
+                JOptionPane.showMessageDialog(null,
+                        "Writing tracks.xml failed, data not saved. The previous tracks.xml is untouched.");
+                return;
+            }
+            writeDatabaseXmlAtomically();
             JOptionPane.showMessageDialog(null, "Data save confirmed");
             mTrackTableModel.setChanged(false);
             mTandaTreeModel.setChanged(false);
@@ -1096,29 +1109,76 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         catch (Exception e)
         {
             out("TrackTableModel.write() IOException:" + e.getMessage());
+            JOptionPane.showMessageDialog(null, "Save failed: " + e.getMessage());
             return;
         }
         return;
     }
 
+    // Writes database.xml to a temp file first, then atomically replaces the real
+    // file only once the write has fully succeeded. Opening database.xml directly
+    // (the old approach) truncated it immediately on open, so any failure partway
+    // through -- e.g. another process briefly holding the file open -- left it
+    // empty with no way back short of an old backup. This never touches the real
+    // file at all unless the new content is complete.
+    private void writeDatabaseXmlAtomically() throws IOException
+    {
+        File target = new File(mMusicBasePath + "\\" + "database.xml");
+        File tempFile = File.createTempFile("database-", ".xml.tmp", target.getAbsoluteFile().getParentFile());
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(tempFile)))
+        {
+            writer.write("***tracks***\n");
+            mTandaTreeModel.write(writer);
+            mPlaylistTreeModel.write(writer);
+        }
+        catch (IOException ex)
+        {
+            tempFile.delete();
+            throw ex;
+        }
+        Files.move(tempFile.toPath(), target.toPath(),
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    // Copies rather than renames -- the original stays in place untouched unless
+    // and until the new file is fully and successfully written (see
+    // writeDatabaseXmlAtomically() / TrackXMLWriter.writeTracksToXml()).
     private boolean backupDatabaseXML()
     {
         File file = new File(mMusicBasePath + "/" + "database.xml");
+        if (!file.exists())
+            return true;
         String ts = Utilities.getTimeString();
-        String newFileName = mMusicBasePath + "/" + "database-" + ts + ".bak";
-        File backup = new File(newFileName);
-        boolean rc = file.renameTo(backup);
-        return rc;
+        File backup = new File(mMusicBasePath + "/" + "database-" + ts + ".bak");
+        try
+        {
+            Files.copy(file.toPath(), backup.toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+            return true;
+        }
+        catch (IOException ex)
+        {
+            out("backupDatabaseXML() failed: " + ex.getMessage());
+            return false;
+        }
     }
 
     private boolean backupTracksXML()
     {
         File file = new File(mMusicBasePath + "/" + "tracks.xml");
+        if (!file.exists())
+            return true;
         String ts = Utilities.getTimeString();
-        String newFileName = mMusicBasePath + "/" + "tracks-" + ts + ".bak";
-        File backup = new File(newFileName);
-        boolean rc = file.renameTo(backup);
-        return rc;
+        File backup = new File(mMusicBasePath + "/" + "tracks-" + ts + ".bak");
+        try
+        {
+            Files.copy(file.toPath(), backup.toPath(), StandardCopyOption.COPY_ATTRIBUTES);
+            return true;
+        }
+        catch (IOException ex)
+        {
+            out("backupTracksXML() failed: " + ex.getMessage());
+            return false;
+        }
     }
 
     private String normalizePath(String pathIn)
@@ -1205,7 +1265,7 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
                 jcb.setSelected(false);
                 return;
             }
-            Object ooo = mTrackTable.getValueAt(row, 6);
+            Object ooo = mTrackTable.getValueAt(row, TrackTableModel.COL_UID);
             long UID;
             if (ooo instanceof Long)
             {

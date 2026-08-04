@@ -55,12 +55,13 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
     private boolean bStyleDirty = false;
 
     // Update an existing track
-    public TrackDetailDialog(Track track)
+    public TrackDetailDialog(Track track, String musicBasePath)
     {
         super((JDialog) null, true);
         bCreate = false;
         JPanel mainPanel = setup();
         mTrack = track;
+        mSourceFile = new File(musicBasePath + "\\" + track.relativePath + "\\" + track.fileName);
         createPanel(mainPanel);
         finalizeSize();
     }
@@ -147,7 +148,7 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
 
     private JPanel setup()
     {
-        int rows = bBulk ? 7 : (bCreate ? 10 : 9);
+        int rows = bBulk ? 7 : 10;
         JPanel mainPanel = new JPanel(new GridLayout(rows, 2, 6, 4));
         mainPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createEtchedBorder(),
@@ -256,11 +257,8 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
         mainPanel.add(createReadOnlyField(mTrack.fileName));
         mainPanel.add(createLabel("Directory"));
         mainPanel.add(createReadOnlyField(mTrack.relativePath));
-        if (bCreate)
-        {
-            mainPanel.add(createNormalizeRow());
-            mainPanel.add(new JPanel());
-        }
+        mainPanel.add(createNormalizeRow());
+        mainPanel.add(new JPanel());
         mainPanel.add(createLabel(""));
         mainPanel.add(createokcancel());
     }
@@ -397,6 +395,12 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
                 mTrack.searchTerm = SearchTermBuilder.buildSearchTerm(mTrack.title, mTrack.orchestra);
                 bChanged = true;
             }
+            if (!bCreate && normalizeCheckBox.isSelected())
+            {
+                if (!applyNormalization())
+                    return;
+                bChanged = true;
+            }
             this.dispose();
         }
         else if (e.getActionCommand().equals("Cancel"))
@@ -429,6 +433,7 @@ public class TrackDetailDialog extends JDialog implements ActionListener, Docume
             mTrack.fileType = ext.equals("flac") ? Track.Type.FLAC : ext.equals("mp3") ? Track.Type.MP3 : Track.Type.WAV;
             mTrack.calculatedTime = SoundUtils.getLength(result.finalFile().getPath());
             mTrack.songTime = SoundUtils.formatIntoMMSS(Math.round(mTrack.calculatedTime));
+            mTrack.measuredLufs = result.finalLufs();
             if (result.clipped())
                 JOptionPane.showMessageDialog(this, mTrack.fileName + " clipped and was hard-limited to 0 dBFS.");
             return true;

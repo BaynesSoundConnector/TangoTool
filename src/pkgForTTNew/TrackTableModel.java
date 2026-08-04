@@ -24,8 +24,12 @@ public class TrackTableModel extends AbstractTableModel
     public static final String END_TAG = "</TT2.Track>";
     public static final String NEW_START_TAG = "<pkgForTTNew.Track>";
     public static final String NEW_END_TAG = "</pkgForTTNew.Track>";
+    // Named so callers outside this class (double-click play, drag-and-drop) don't
+    // hardcode the column index -- it has shifted before (LUFS inserted before UID)
+    // and will again if columns change.
+    public static final int COL_UID = 7;
     String[] columnNames =
-    { "Title", "Orchestra", "Style", "Rating", "Time", "Album", "UID", "Tandas" };
+    { "Title", "Orchestra", "Style", "Rating", "Time", "Album", "LUFS", "UID", "Tandas" };
     HashMap<Long, Track> hmTracks = new HashMap<>();
     ArrayList<Track> mTracks = new ArrayList<Track>();
     Vector<Track> mTracksSubset;
@@ -267,7 +271,7 @@ public class TrackTableModel extends AbstractTableModel
     public Class<?> getColumnClass(int colIndex)
     {
         // TODO Auto-generated method stub
-        if (colIndex == 6)
+        if (colIndex == COL_UID)
             return Integer.class;
         Object obj = getValueAt(0, colIndex);
         if (obj == null)
@@ -305,9 +309,11 @@ public class TrackTableModel extends AbstractTableModel
         if (columnIndex == 5)
             return track.album;
         if (columnIndex == 6)
+            return track.measuredLufs == null ? "" : String.format("%.1f", track.measuredLufs);
+        if (columnIndex == COL_UID)
             // return String.valueOf(track.uniqueId);
             return track.uniqueId;
-        if (columnIndex == 7 && track.inTandas != null)
+        if (columnIndex == COL_UID + 1 && track.inTandas != null)
         {
             StringBuffer sb = new StringBuffer();
             Iterator<Long> it = track.inTandas.iterator();

@@ -6,7 +6,12 @@ import java.io.File;
 public class AudioFileReader {
 
     public static AudioData read(File file) throws Exception {
-        AudioInputStream original = AudioSystem.getAudioInputStream(file);
+        // Not AudioSystem.getAudioInputStream(file) directly -- see SoundUtils.probeProviders()
+        // for why: that call shares one stream across all format providers and breaks once
+        // other files have already been decoded earlier in the same JVM run, which is exactly
+        // what happens measuring/normalizing many tracks in one session (e.g. a playlist LUFS
+        // report).
+        AudioInputStream original = SoundUtils.getAudioInputStreamRobust(file);
         AudioFormat fmt = original.getFormat();
 
         int sampleRate  = (int) fmt.getSampleRate();

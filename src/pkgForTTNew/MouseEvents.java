@@ -69,7 +69,7 @@ public class MouseEvents
             for (int viewRow : target.getSelectedRows())
             {
                 int modelRow = target.convertRowIndexToModel(viewRow);
-                Object obj = target.getModel().getValueAt(modelRow, 6);
+                Object obj = target.getModel().getValueAt(modelRow, TrackTableModel.COL_UID);
                 long uid = (obj instanceof Long) ? (Long) obj : Long.parseLong((String) obj);
                 Track t = mTrackTableModel.getTrackbyUniqueId(uid);
                 if (t != null)
@@ -112,7 +112,7 @@ public class MouseEvents
             }
             else if (selectedValue.equals("Edit"))
             {
-                TrackDetailDialog tdd = multi ? new TrackDetailDialog(tracks) : new TrackDetailDialog(track);
+                TrackDetailDialog tdd = multi ? new TrackDetailDialog(tracks) : new TrackDetailDialog(track, mMusicBasePath);
                 tdd.setVisible(true);
                 if (tdd.bChanged)
                 {
@@ -172,7 +172,7 @@ public class MouseEvents
             int row = target.getSelectedRow(); // select a row
             // int index = mTrackTable.convertRowIndexToModel(row);
             // int column = target.getSelectedColumn(); // select a column
-            Object obj = mTrackTable.getValueAt(row, 6);
+            Object obj = mTrackTable.getValueAt(row, TrackTableModel.COL_UID);
             long UID;
             if (obj instanceof Long)
             {
@@ -204,11 +204,23 @@ public class MouseEvents
             {
                 Playlist playlist = (Playlist) tp.getLastPathComponent();
                 Object[] possibleValues =
-                { "Export to CD", "Export to XSPF Playlist", "Export to Text", "Delete" };
+                { "Export to CD", "Export to XSPF Playlist", "Export to Text", "LUFS Report", "Delete" };
                 Object selectedValue = JOptionPane.showInputDialog(null, null, playlist.name,
                         JOptionPane.INFORMATION_MESSAGE, null, possibleValues, possibleValues[0]);
                 if (selectedValue == null)
                     return true;
+                if (selectedValue.equals("LUFS Report"))
+                {
+                    ArrayList<Track> tracks = buildTrackList(playlist);
+                    LufsReportDialog lrd = new LufsReportDialog(playlist.name, tracks, mMusicBasePath);
+                    lrd.setVisible(true);
+                    if (lrd.bChanged)
+                    {
+                        mTrackTableModel.setChanged(true);
+                        mTrackTableModel.fireTableDataChanged();
+                    }
+                    return true;
+                }
                 if (selectedValue.equals("Delete"))
                 {
                     int rc = JOptionPane.showConfirmDialog(null, "Delete playlist: " + playlist.name + "?", playlist.name,

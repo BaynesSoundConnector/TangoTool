@@ -385,8 +385,8 @@ public class TangoTransferHandler extends TransferHandler
         int row = table.getSelectedRow();
         int index = table.convertRowIndexToModel(row);
         //int test = table.convertRowIndexToView(row);
-        Object obj = table.getModel().getValueAt(row, 6);
-        Object obj2 = table.getModel().getValueAt(index, 6);
+        Object obj = table.getModel().getValueAt(row, TrackTableModel.COL_UID);
+        Object obj2 = table.getModel().getValueAt(index, TrackTableModel.COL_UID);
         //Object obj3 = table.getModel().getValueAt(test, 6);
         long UID = ((Long)obj2).longValue();
         //

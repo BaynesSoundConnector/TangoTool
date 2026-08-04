@@ -43,6 +43,7 @@ import javax.swing.event.TableModelListener;
 import javax.swing.event.TreeModelEvent;
 import javax.swing.event.TreeModelListener;
 import javax.swing.table.TableColumnModel;
+import javax.swing.text.JTextComponent;
 import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.TreeCellRenderer;
 import javax.swing.tree.TreePath;
@@ -1312,6 +1313,13 @@ public class MainForTTNew extends JFrame implements ActionListener, MouseListene
         {
             if (e.getID() != KeyEvent.KEY_PRESSED) return false;
             if (KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow() != MainForTTNew.this)
+                return false;
+            // Don't hijack keystrokes typed into a text field (e.g. the search box) --
+            // this dispatcher runs application-wide regardless of focus, so without this
+            // check typing a plain "p" while a playlist track happened to be selected
+            // would toggle playback instead of entering the letter.
+            Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            if (focusOwner instanceof JTextComponent)
                 return false;
             // Only intercept when a track is selected in the playlist, or playback is active
             TreePath tp = mPlaylistTree.getSelectionPath();
